@@ -1,9 +1,11 @@
+# -*- coding: utf-8 -*
 """
 Use setup tools to install sickrage
 """
 import os
-from setuptools import find_packages, setup
+
 from babel.messages import frontend as babel
+from setuptools import find_packages, setup
 
 ROOT = os.path.realpath(os.path.join(os.path.dirname(__file__)))
 
@@ -29,7 +31,8 @@ setup(
     install_requires=[
         'pytz',
         'requests',
-        'mako'
+        'mako',
+        'configobj'
     ],
 
     test_suite="tests",
@@ -39,7 +42,9 @@ setup(
         'rednose',
         'mock',
         'vcrpy-unittest',
-        'babel'
+        'babel',
+        'flake8-coding',
+        'isort'
     ],
 
     classifiers=[
@@ -59,10 +64,8 @@ setup(
     message_extractors={
         'gui': [
             ('**/views/**.mako', 'mako', {'input_encoding': 'utf-8'}),
-            # @OmgImAlexis
-            # Need to move *.js into a separate dir than *.min.js,
-            # running gettext on minified js conflicts with _()
-            # ('**/js/**.js', 'javascript', {'input_encoding': 'utf-8'})
+            ('**/js/*.min.js', 'ignore', None),
+            ('**/js/*.js', 'javascript', {'input_encoding': 'utf-8'})
         ],
         'sickrage': [('**.py', 'python', None)],
         'sickbeard': [('**.py', 'python', None)],

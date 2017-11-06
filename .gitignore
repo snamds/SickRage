@@ -58,17 +58,17 @@ Thumbs.db
 
 # Unrar Executable   #
 ######################
-lib/unrar2/UnRAR.exe
+unrar/*
 
 # Grunt #
 ######################
-.build/bower_components
-.build/node_modules
-.build/dist
+bower_components
+node_modules
+dist
 
 # Unit test/Coverage #
 ######################
-.tox/
+.tox
 .coverage
 htmlcov
 
@@ -78,7 +78,15 @@ contrib/nzbToMedia
 
 # setup.py #
 ######################
-/*.egg-info
+*.egg-info
+.eggs
+build
 
 # virtualenv #
 venv
+
+# diffs
+/*.diff
+
+/genchanges.sh
+/Downloads

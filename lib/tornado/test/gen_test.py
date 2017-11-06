@@ -1,12 +1,12 @@
-from __future__ import absolute_import, division, print_function, with_statement
+from __future__ import absolute_import, division, print_function
 
+import gc
 import contextlib
 import datetime
 import functools
 import sys
 import textwrap
 import time
-import platform
 import weakref
 
 from tornado.concurrent import return_future, Future
@@ -16,7 +16,7 @@ from tornado.ioloop import IOLoop
 from tornado.log import app_log
 from tornado import stack_context
 from tornado.testing import AsyncHTTPTestCase, AsyncTestCase, ExpectLog, gen_test
-from tornado.test.util import unittest, skipOnTravis
+from tornado.test.util import unittest, skipOnTravis, skipBefore33, skipBefore35, skipNotCPython, exec_test
 from tornado.web import Application, RequestHandler, asynchronous, HTTPError
 
 from tornado import gen
@@ -25,10 +25,6 @@ try:
     from concurrent import futures
 except ImportError:
     futures = None
-
-skipBefore33 = unittest.skipIf(sys.version_info < (3, 3), 'PEP 380 not available')
-skipNotCPython = unittest.skipIf(platform.python_implementation() != 'CPython',
-                                 'Not CPython implementation')
 
 
 class GenEngineTest(AsyncTestCase):
@@ -281,6 +277,13 @@ class GenEngineTest(AsyncTestCase):
             pass
         self.orphaned_callback()
 
+    def test_none(self):
+        @gen.engine
+        def f():
+            yield None
+            self.stop()
+        self.run_gen(f)
+
     def test_multi(self):
         @gen.engine
         def f():
@@ -416,9 +419,9 @@ class GenEngineTest(AsyncTestCase):
 
         # Exception logging may be explicitly quieted.
         with self.assertRaises(RuntimeError):
-                yield gen.Multi([self.async_exception(RuntimeError("error 1")),
-                                 self.async_exception(RuntimeError("error 2"))],
-                                quiet_exceptions=RuntimeError)
+            yield gen.Multi([self.async_exception(RuntimeError("error 1")),
+                             self.async_exception(RuntimeError("error 2"))],
+                            quiet_exceptions=RuntimeError)
 
     @gen_test
     def test_multi_future_exceptions(self):
@@ -435,10 +438,10 @@ class GenEngineTest(AsyncTestCase):
 
         # Exception logging may be explicitly quieted.
         with self.assertRaises(RuntimeError):
-                yield gen.multi_future(
-                    [self.async_exception(RuntimeError("error 1")),
-                     self.async_exception(RuntimeError("error 2"))],
-                    quiet_exceptions=RuntimeError)
+            yield gen.multi_future(
+                [self.async_exception(RuntimeError("error 1")),
+                 self.async_exception(RuntimeError("error 2"))],
+                quiet_exceptions=RuntimeError)
 
     def test_arguments(self):
         @gen.engine
@@ -662,6 +665,28 @@ class GenCoroutineTest(AsyncTestCase):
         super(GenCoroutineTest, self).tearDown()
         assert self.finished
 
+    def test_attributes(self):
+        self.finished = True
+
+        def f():
+            yield gen.moment
+
+        coro = gen.coroutine(f)
+        self.assertEqual(coro.__name__, f.__name__)
+        self.assertEqual(coro.__module__, f.__module__)
+        self.assertIs(coro.__wrapped__, f)
+
+    def test_is_coroutine_function(self):
+        self.finished = True
+
+        def f():
+            yield gen.moment
+
+        coro = gen.coroutine(f)
+        self.assertFalse(gen.is_coroutine_function(f))
+        self.assertTrue(gen.is_coroutine_function(coro))
+        self.assertFalse(gen.is_coroutine_function(coro()))
+
     @gen_test
     def test_sync_gen_return(self):
         @gen.coroutine
@@ -693,19 +718,13 @@ class GenCoroutineTest(AsyncTestCase):
     @skipBefore33
     @gen_test
     def test_async_return(self):
-        # It is a compile-time error to return a value in a generator
-        # before Python 3.3, so we must test this with exec.
-        # Flatten the real global and local namespace into our fake globals:
-        # it's all global from the perspective of f().
-        global_namespace = dict(globals(), **locals())
-        local_namespace = {}
-        exec(textwrap.dedent("""
+        namespace = exec_test(globals(), locals(), """
         @gen.coroutine
         def f():
             yield gen.Task(self.io_loop.add_callback)
             return 42
-        """), global_namespace, local_namespace)
-        result = yield local_namespace['f']()
+        """)
+        result = yield namespace['f']()
         self.assertEqual(result, 42)
         self.finished = True
 
@@ -715,16 +734,94 @@ class GenCoroutineTest(AsyncTestCase):
         # A yield statement exists but is not executed, which means
         # this function "returns" via an exception.  This exception
         # doesn't happen before the exception handling is set up.
-        global_namespace = dict(globals(), **locals())
-        local_namespace = {}
-        exec(textwrap.dedent("""
+        namespace = exec_test(globals(), locals(), """
         @gen.coroutine
         def f():
             if True:
                 return 42
             yield gen.Task(self.io_loop.add_callback)
-        """), global_namespace, local_namespace)
-        result = yield local_namespace['f']()
+        """)
+        result = yield namespace['f']()
+        self.assertEqual(result, 42)
+        self.finished = True
+
+    @skipBefore35
+    @gen_test
+    def test_async_await(self):
+        # This test verifies that an async function can await a
+        # yield-based gen.coroutine, and that a gen.coroutine
+        # (the test method itself) can yield an async function.
+        namespace = exec_test(globals(), locals(), """
+        async def f():
+            await gen.Task(self.io_loop.add_callback)
+            return 42
+        """)
+        result = yield namespace['f']()
+        self.assertEqual(result, 42)
+        self.finished = True
+
+    @skipBefore35
+    @gen_test
+    def test_asyncio_sleep_zero(self):
+        # asyncio.sleep(0) turns into a special case (equivalent to
+        # `yield None`)
+        namespace = exec_test(globals(), locals(), """
+        async def f():
+            import asyncio
+            await asyncio.sleep(0)
+            return 42
+        """)
+        result = yield namespace['f']()
+        self.assertEqual(result, 42)
+        self.finished = True
+
+    @skipBefore35
+    @gen_test
+    def test_async_await_mixed_multi_native_future(self):
+        namespace = exec_test(globals(), locals(), """
+        async def f1():
+            await gen.Task(self.io_loop.add_callback)
+            return 42
+        """)
+
+        @gen.coroutine
+        def f2():
+            yield gen.Task(self.io_loop.add_callback)
+            raise gen.Return(43)
+
+        results = yield [namespace['f1'](), f2()]
+        self.assertEqual(results, [42, 43])
+        self.finished = True
+
+    @skipBefore35
+    @gen_test
+    def test_async_await_mixed_multi_native_yieldpoint(self):
+        namespace = exec_test(globals(), locals(), """
+        async def f1():
+            await gen.Task(self.io_loop.add_callback)
+            return 42
+        """)
+
+        @gen.coroutine
+        def f2():
+            yield gen.Task(self.io_loop.add_callback)
+            raise gen.Return(43)
+
+        f2(callback=(yield gen.Callback('cb')))
+        results = yield [namespace['f1'](), gen.Wait('cb')]
+        self.assertEqual(results, [42, 43])
+        self.finished = True
+
+    @skipBefore35
+    @gen_test
+    def test_async_with_timeout(self):
+        namespace = exec_test(globals(), locals(), """
+        async def f1():
+            return 42
+        """)
+
+        result = yield gen.with_timeout(datetime.timedelta(hours=1),
+                                        namespace['f1']())
         self.assertEqual(result, 42)
         self.finished = True
 
@@ -918,6 +1015,32 @@ class GenCoroutineTest(AsyncTestCase):
 
         self.finished = True
 
+    @skipNotCPython
+    def test_coroutine_refcounting(self):
+        # On CPython, tasks and their arguments should be released immediately
+        # without waiting for garbage collection.
+        @gen.coroutine
+        def inner():
+            class Foo(object):
+                pass
+            local_var = Foo()
+            self.local_ref = weakref.ref(local_var)
+            yield gen.coroutine(lambda: None)()
+            raise ValueError('Some error')
+
+        @gen.coroutine
+        def inner2():
+            try:
+                yield inner()
+            except ValueError:
+                pass
+
+        self.io_loop.run_sync(inner2, timeout=3)
+
+        self.assertIs(self.local_ref(), None)
+        self.finished = True
+
+
 class GenSequenceHandler(RequestHandler):
     @asynchronous
     @gen.engine
@@ -1015,6 +1138,7 @@ class GenYieldExceptionHandler(RequestHandler):
             self.finish('ok')
 
 
+# "Undecorated" here refers to the absence of @asynchronous.
 class UndecoratedCoroutinesHandler(RequestHandler):
     @gen.coroutine
     def prepare(self):
@@ -1041,6 +1165,15 @@ class AsyncPrepareErrorHandler(RequestHandler):
         self.finish('ok')
 
 
+class NativeCoroutineHandler(RequestHandler):
+    if sys.version_info > (3, 5):
+        exec(textwrap.dedent("""
+        async def get(self):
+            await gen.Task(IOLoop.current().add_callback)
+            self.write("ok")
+        """))
+
+
 class GenWebTest(AsyncHTTPTestCase):
     def get_app(self):
         return Application([
@@ -1054,6 +1187,7 @@ class GenWebTest(AsyncHTTPTestCase):
             ('/yield_exception', GenYieldExceptionHandler),
             ('/undecorated_coroutine', UndecoratedCoroutinesHandler),
             ('/async_prepare_error', AsyncPrepareErrorHandler),
+            ('/native_coroutine', NativeCoroutineHandler),
         ])
 
     def test_sequence_handler(self):
@@ -1095,6 +1229,12 @@ class GenWebTest(AsyncHTTPTestCase):
     def test_async_prepare_error_handler(self):
         response = self.fetch('/async_prepare_error')
         self.assertEqual(response.code, 403)
+
+    @skipBefore35
+    def test_native_coroutine_handler(self):
+        response = self.fetch('/native_coroutine')
+        self.assertEqual(response.code, 200)
+        self.assertEqual(response.body, b'ok')
 
 
 class WithTimeoutTest(AsyncTestCase):
@@ -1249,6 +1389,45 @@ class WaitIteratorTest(AsyncTestCase):
                     self.assertEqual(g.current_index, 3, 'wrong index')
             i += 1
 
+    @skipBefore35
+    @gen_test
+    def test_iterator_async_await(self):
+        # Recreate the previous test with py35 syntax. It's a little clunky
+        # because of the way the previous test handles an exception on
+        # a single iteration.
+        futures = [Future(), Future(), Future(), Future()]
+        self.finish_coroutines(0, futures)
+        self.finished = False
+
+        namespace = exec_test(globals(), locals(), """
+        async def f():
+            i = 0
+            g = gen.WaitIterator(*futures)
+            try:
+                async for r in g:
+                    if i == 0:
+                        self.assertEqual(r, 24, 'iterator value incorrect')
+                        self.assertEqual(g.current_index, 2, 'wrong index')
+                    else:
+                        raise Exception("expected exception on iteration 1")
+                    i += 1
+            except ZeroDivisionError:
+                i += 1
+            async for r in g:
+                if i == 2:
+                    self.assertEqual(r, 42, 'iterator value incorrect')
+                    self.assertEqual(g.current_index, 1, 'wrong index')
+                elif i == 3:
+                    self.assertEqual(r, 84, 'iterator value incorrect')
+                    self.assertEqual(g.current_index, 3, 'wrong index')
+                else:
+                    raise Exception("didn't expect iteration %d" % i)
+                i += 1
+            self.finished = True
+        """)
+        yield namespace['f']()
+        self.assertTrue(self.finished)
+
     @gen_test
     def test_no_ref(self):
         # In this usage, there is no direct hard reference to the
@@ -1257,6 +1436,31 @@ class WaitIteratorTest(AsyncTestCase):
         # performance, this used to cause problems.
         yield gen.with_timeout(datetime.timedelta(seconds=0.1),
                                gen.WaitIterator(gen.sleep(0)).next())
+
+
+class RunnerGCTest(AsyncTestCase):
+    """Github issue 1769: Runner objects can get GCed unexpectedly"""
+    @gen_test
+    def test_gc(self):
+        """Runners shouldn't GC if future is alive"""
+        # Create the weakref
+        weakref_scope = [None]
+
+        def callback():
+            gc.collect(2)
+            weakref_scope[0]().set_result(123)
+
+        @gen.coroutine
+        def tester():
+            fut = Future()
+            weakref_scope[0] = weakref.ref(fut)
+            self.io_loop.add_callback(callback)
+            yield fut
+
+        yield gen.with_timeout(
+            datetime.timedelta(seconds=0.2),
+            tester()
+        )
 
 
 if __name__ == '__main__':

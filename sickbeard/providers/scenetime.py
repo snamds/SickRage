@@ -18,13 +18,11 @@
 # You should have received a copy of the GNU General Public License
 # along with SickRage. If not, see <http://www.gnu.org/licenses/>.
 
-import re
-from urllib import quote
-from requests.utils import dict_from_cookiejar
+from __future__ import print_function, unicode_literals
 
+from requests.utils import dict_from_cookiejar
 from sickbeard import logger, tvcache
 from sickbeard.bs4_parser import BS4Parser
-
 from sickrage.helper.common import convert_size, try_int
 from sickrage.providers.torrent.TorrentProvider import TorrentProvider
 
@@ -40,35 +38,43 @@ class SceneTimeProvider(TorrentProvider):  # pylint: disable=too-many-instance-a
         self.minseed = None
         self.minleech = None
 
+        self.enable_cookies = True
+
         self.cache = tvcache.TVCache(self)  # only poll SceneTime every 20 minutes max
 
         self.urls = {'base_url': 'https://www.scenetime.com',
                      'login': 'https://www.scenetime.com/takelogin.php',
                      'detail': 'https://www.scenetime.com/details.php?id=%s',
-                     'search': 'https://www.scenetime.com/browse.php?search=%s%s',
+                     'apisearch': 'https://www.scenetime.com/browse_API.php',
                      'download': 'https://www.scenetime.com/download.php/%s/%s'}
 
         self.url = self.urls['base_url']
 
-        self.categories = "&c2=1&c43=13&c9=1&c63=1&c77=1&c79=1&c100=1&c101=1"
+        self.categories = [2, 42, 9, 63, 77, 79, 100, 83]
 
     def login(self):
-        if any(dict_from_cookiejar(self.session.cookies).values()):
+        cookie_dict = dict_from_cookiejar(self.session.cookies)
+        if cookie_dict.get('uid') and cookie_dict.get('pass'):
             return True
 
-        login_params = {'username': self.username,
-                        'password': self.password}
+        if self.cookies:
+            success, status = self.add_cookies_from_ui()
+            if not success:
+                logger.log(status, logger.INFO)
+                return False
 
-        response = self.get_url(self.urls['login'], post_data=login_params, returns='text')
-        if not response:
-            logger.log(u"Unable to connect to provider", logger.WARNING)
-            return False
+            login_params = {'username': self.username, 'password': self.password}
 
-        if re.search('Username or password incorrect', response):
-            logger.log(u"Invalid username or password. Check your settings", logger.WARNING)
-            return False
+            response = self.get_url(self.urls['login'], post_data=login_params, returns='response')
+            if not response or response.status_code != 200:
+                logger.log("Unable to connect to provider", logger.WARNING)
+                return False
 
-        return True
+            if dict_from_cookiejar(self.session.cookies).get('uid') in response.text:
+                return True
+            else:
+                logger.log('Failed to login, check your cookies', logger.WARNING)
+                return False
 
     def search(self, search_params, age=0, ep_obj=None):  # pylint: disable=too-many-branches, too-many-locals
         results = []
@@ -77,34 +83,33 @@ class SceneTimeProvider(TorrentProvider):  # pylint: disable=too-many-instance-a
 
         for mode in search_params:
             items = []
-            logger.log(u"Search Mode: {0}".format(mode), logger.DEBUG)
+            logger.log("Search Mode: {0}".format(mode), logger.DEBUG)
             for search_string in search_params[mode]:
 
                 if mode != 'RSS':
-                    logger.log(u"Search string: {0}".format
+                    logger.log("Search string: {0}".format
                                (search_string.decode("utf-8")), logger.DEBUG)
 
-                search_url = self.urls['search'] % (quote(search_string), self.categories)
+                query = { 'sec': 'jax', 'cata': 'yes', 'search': search_string }
+                query.update({"c"+str(i): 1 for i in self.categories})
 
-                data = self.get_url(search_url, returns='text')
+                data = self.get_url(self.urls['apisearch'], returns='text', post_data=query)
+
                 if not data:
                     continue
 
                 with BS4Parser(data, 'html5lib') as html:
-                    torrent_table = html.find('div', id="torrenttable")
-                    torrent_rows = []
-                    if torrent_table:
-                        torrent_rows = torrent_table.select("tr")
+                    torrent_rows = html.findAll('tr')
 
                     # Continue only if one Release is found
                     if len(torrent_rows) < 2:
-                        logger.log(u"Data returned from provider does not contain any torrents", logger.DEBUG)
+                        logger.log("Data returned from provider does not contain any torrents", logger.DEBUG)
                         continue
 
                     # Scenetime apparently uses different number of cells in #torrenttable based
                     # on who you are. This works around that by extracting labels from the first
                     # <tr> and using their index to find the correct download/seeders/leechers td.
-                    labels = [label.get_text(strip=True) for label in torrent_rows[0]('td')]
+                    labels = [label.get_text(strip=True) or label.img['title'] for label in torrent_rows[0]('td')]
 
                     for result in torrent_rows[1:]:
                         try:
@@ -131,13 +136,13 @@ class SceneTimeProvider(TorrentProvider):  # pylint: disable=too-many-instance-a
                         # Filter unseeded torrent
                         if seeders < self.minseed or leechers < self.minleech:
                             if mode != 'RSS':
-                                logger.log(u"Discarding torrent because it doesn't meet the minimum seeders or leechers: {0} (S:{1} L:{2})".format
+                                logger.log("Discarding torrent because it doesn't meet the minimum seeders or leechers: {0} (S:{1} L:{2})".format
                                            (title, seeders, leechers), logger.DEBUG)
                             continue
 
                         item = {'title': title, 'link': download_url, 'size': size, 'seeders': seeders, 'leechers': leechers, 'hash': ''}
                         if mode != 'RSS':
-                            logger.log(u"Found result: {0} with {1} seeders and {2} leechers".format(title, seeders, leechers), logger.DEBUG)
+                            logger.log("Found result: {0} with {1} seeders and {2} leechers".format(title, seeders, leechers), logger.DEBUG)
 
                         items.append(item)
 

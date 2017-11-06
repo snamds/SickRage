@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 
-from __future__ import absolute_import, division, print_function, with_statement
+from __future__ import absolute_import, division, print_function
 from tornado import netutil
 from tornado.escape import json_decode, json_encode, utf8, _unicode, recursive_unicode, native_str
 from tornado import gen
@@ -14,7 +14,6 @@ from tornado.netutil import ssl_options_to_context
 from tornado.simple_httpclient import SimpleAsyncHTTPClient
 from tornado.testing import AsyncHTTPTestCase, AsyncHTTPSTestCase, AsyncTestCase, ExpectLog, gen_test
 from tornado.test.util import unittest, skipOnTravis
-from tornado.util import u
 from tornado.web import Application, RequestHandler, asynchronous, stream_request_body
 from contextlib import closing
 import datetime
@@ -87,7 +86,7 @@ class BaseSSLTest(AsyncHTTPSTestCase):
 
 class SSLTestMixin(object):
     def get_ssl_options(self):
-        return dict(ssl_version=self.get_ssl_version(),
+        return dict(ssl_version=self.get_ssl_version(),  # type: ignore
                     **AsyncHTTPSTestCase.get_ssl_options())
 
     def get_ssl_version(self):
@@ -116,6 +115,16 @@ class SSLTestMixin(object):
                     connect_timeout=3600)
                 response = self.wait()
         self.assertEqual(response.code, 599)
+
+    def test_error_logging(self):
+        # No stack traces are logged for SSL errors.
+        with ExpectLog(gen_log, 'SSL Error') as expect_log:
+            self.http_client.fetch(
+                self.get_url("/").replace("https:", "http:"),
+                self.stop)
+            response = self.wait()
+            self.assertEqual(response.code, 599)
+        self.assertFalse(expect_log.logged_stack)
 
 # Python's SSL implementation differs significantly between versions.
 # For example, SSLv3 and TLSv1 throw an exception if you try to read
@@ -167,12 +176,12 @@ class BadSSLOptionsTest(unittest.TestCase):
         self.assertRaises((ValueError, IOError),
                           HTTPServer, application, ssl_options={
                               "certfile": "/__mising__.crt",
-                          })
+        })
         self.assertRaises((ValueError, IOError),
                           HTTPServer, application, ssl_options={
                               "certfile": existing_certificate,
                               "keyfile": "/__missing__.key"
-                          })
+        })
 
         # This actually works because both files exist
         HTTPServer(application, ssl_options={
@@ -222,19 +231,19 @@ class HTTPConnectionTest(AsyncHTTPTestCase):
             b"\r\n".join([
                 b"Content-Disposition: form-data; name=argument",
                 b"",
-                u("\u00e1").encode("utf-8"),
+                u"\u00e1".encode("utf-8"),
                 b"--1234567890",
-                u('Content-Disposition: form-data; name="files"; filename="\u00f3"').encode("utf8"),
+                u'Content-Disposition: form-data; name="files"; filename="\u00f3"'.encode("utf8"),
                 b"",
-                u("\u00fa").encode("utf-8"),
+                u"\u00fa".encode("utf-8"),
                 b"--1234567890--",
                 b"",
             ]))
         data = json_decode(response)
-        self.assertEqual(u("\u00e9"), data["header"])
-        self.assertEqual(u("\u00e1"), data["argument"])
-        self.assertEqual(u("\u00f3"), data["filename"])
-        self.assertEqual(u("\u00fa"), data["filebody"])
+        self.assertEqual(u"\u00e9", data["header"])
+        self.assertEqual(u"\u00e1", data["argument"])
+        self.assertEqual(u"\u00f3", data["filename"])
+        self.assertEqual(u"\u00fa", data["filebody"])
 
     def test_newlines(self):
         # We support both CRLF and bare LF as line separators.
@@ -330,17 +339,17 @@ class HTTPServerTest(AsyncHTTPTestCase):
     def test_query_string_encoding(self):
         response = self.fetch("/echo?foo=%C3%A9")
         data = json_decode(response.body)
-        self.assertEqual(data, {u("foo"): [u("\u00e9")]})
+        self.assertEqual(data, {u"foo": [u"\u00e9"]})
 
     def test_empty_query_string(self):
         response = self.fetch("/echo?foo=&foo=")
         data = json_decode(response.body)
-        self.assertEqual(data, {u("foo"): [u(""), u("")]})
+        self.assertEqual(data, {u"foo": [u"", u""]})
 
     def test_empty_post_parameters(self):
         response = self.fetch("/echo", method="POST", body="foo=&bar=")
         data = json_decode(response.body)
-        self.assertEqual(data, {u("foo"): [u("")], u("bar"): [u("")]})
+        self.assertEqual(data, {u"foo": [u""], u"bar": [u""]})
 
     def test_types(self):
         headers = {"Cookie": "foo=bar"}
@@ -402,14 +411,14 @@ class HTTPServerRawTest(AsyncHTTPTestCase):
             self.stream.write(b'asdf\r\n\r\n')
             # TODO: need an async version of ExpectLog so we don't need
             # hard-coded timeouts here.
-            self.io_loop.add_timeout(datetime.timedelta(seconds=0.01),
+            self.io_loop.add_timeout(datetime.timedelta(seconds=0.05),
                                      self.stop)
             self.wait()
 
     def test_malformed_headers(self):
         with ExpectLog(gen_log, '.*Malformed HTTP headers'):
             self.stream.write(b'GET / HTTP/1.0\r\nasdf\r\n\r\n')
-            self.io_loop.add_timeout(datetime.timedelta(seconds=0.01),
+            self.io_loop.add_timeout(datetime.timedelta(seconds=0.05),
                                      self.stop)
             self.wait()
 
@@ -430,7 +439,38 @@ bar
 """.replace(b"\n", b"\r\n"))
         read_stream_body(self.stream, self.stop)
         headers, response = self.wait()
-        self.assertEqual(json_decode(response), {u('foo'): [u('bar')]})
+        self.assertEqual(json_decode(response), {u'foo': [u'bar']})
+
+    def test_chunked_request_uppercase(self):
+        # As per RFC 2616 section 3.6, "Transfer-Encoding" header's value is
+        # case-insensitive.
+        self.stream.write(b"""\
+POST /echo HTTP/1.1
+Transfer-Encoding: Chunked
+Content-Type: application/x-www-form-urlencoded
+
+4
+foo=
+3
+bar
+0
+
+""".replace(b"\n", b"\r\n"))
+        read_stream_body(self.stream, self.stop)
+        headers, response = self.wait()
+        self.assertEqual(json_decode(response), {u'foo': [u'bar']})
+
+    def test_invalid_content_length(self):
+        with ExpectLog(gen_log, '.*Only integer Content-Length is allowed'):
+            self.stream.write(b"""\
+POST /echo HTTP/1.1
+Content-Length: foo
+
+bar
+
+""".replace(b"\n", b"\r\n"))
+            self.stream.read_until_close(self.stop)
+            self.wait()
 
 
 class XHeaderTest(HandlerBaseTestCase):
@@ -440,7 +480,7 @@ class XHeaderTest(HandlerBaseTestCase):
                             remote_protocol=self.request.protocol))
 
     def get_httpserver_options(self):
-        return dict(xheaders=True)
+        return dict(xheaders=True, trusted_downstream=['5.5.5.5'])
 
     def test_ip_headers(self):
         self.assertEqual(self.fetch_json("/")["remote_ip"], "127.0.0.1")
@@ -479,6 +519,13 @@ class XHeaderTest(HandlerBaseTestCase):
         self.assertEqual(
             self.fetch_json("/", headers=invalid_host)["remote_ip"],
             "127.0.0.1")
+
+    def test_trusted_downstream(self):
+
+        valid_ipv4_list = {"X-Forwarded-For": "127.0.0.1, 4.4.4.4, 5.5.5.5"}
+        self.assertEqual(
+            self.fetch_json("/", headers=valid_ipv4_list)["remote_ip"],
+            "4.4.4.4")
 
     def test_scheme_headers(self):
         self.assertEqual(self.fetch_json("/")["remote_protocol"], "http")
@@ -765,7 +812,7 @@ class GzipBaseTest(object):
 
     def test_uncompressed(self):
         response = self.fetch('/', method='POST', body='foo=bar')
-        self.assertEquals(json_decode(response.body), {u('foo'): [u('bar')]})
+        self.assertEquals(json_decode(response.body), {u'foo': [u'bar']})
 
 
 class GzipTest(GzipBaseTest, AsyncHTTPTestCase):
@@ -774,7 +821,7 @@ class GzipTest(GzipBaseTest, AsyncHTTPTestCase):
 
     def test_gzip(self):
         response = self.post_gzip('foo=bar')
-        self.assertEquals(json_decode(response.body), {u('foo'): [u('bar')]})
+        self.assertEquals(json_decode(response.body), {u'foo': [u'bar']})
 
 
 class GzipUnsupportedTest(GzipBaseTest, AsyncHTTPTestCase):
@@ -889,9 +936,12 @@ class MaxHeaderSizeTest(AsyncHTTPTestCase):
         self.assertEqual(response.body, b"Hello world")
 
     def test_large_headers(self):
-        with ExpectLog(gen_log, "Unsatisfiable read"):
+        with ExpectLog(gen_log, "Unsatisfiable read", required=False):
             response = self.fetch("/", headers={'X-Filler': 'a' * 1000})
-        self.assertEqual(response.code, 599)
+        # 431 is "Request Header Fields Too Large", defined in RFC
+        # 6585. However, many implementations just close the
+        # connection in this case, resulting in a 599.
+        self.assertIn(response.code, (431, 599))
 
 
 @skipOnTravis

@@ -25,21 +25,23 @@ Common interface for Quality and Status
 # pylint: disable=line-too-long
 from __future__ import unicode_literals
 
+import gettext
 import operator
-from os import path
 import platform
 import re
 import uuid
-import gettext
+from os import path
 
 from fake_useragent import settings as UA_SETTINGS, UserAgent
 from sickbeard.numdict import NumDict
-from sickrage.helper.encoding import ek
 from sickrage.helper import video_screen_size
-from sickrage.tagger.episode import EpisodeTags
+from sickrage.helper.encoding import ek
 from sickrage.recompiled import tags
+from sickrage.tagger.episode import EpisodeTags
+# noinspection PyUnresolvedReferences
+from six.moves import reduce
 
-gettext.install('messages', unicode=1, codeset='UTF-8')
+gettext.install('messages', unicode=1, codeset='UTF-8', names=["ngettext"])
 
 # If some provider has an issue with functionality of SR, other than user agents, it's best to come talk to us rather than block.
 # It is no different than us going to a provider if we have questions or issues. Be a team player here.
@@ -430,7 +432,7 @@ class Quality(object):
         :param status: to split
         :returns: a tuple containing (status, quality)
         """
-        status = long(status)
+        status = int(status)
         if status == UNKNOWN:
             return UNKNOWN, Quality.UNKNOWN
 

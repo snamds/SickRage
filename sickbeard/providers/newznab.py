@@ -19,17 +19,17 @@
 # along with SickRage. If not, see <http://www.gnu.org/licenses/>.
 
 from __future__ import unicode_literals
-from requests.compat import urljoin
+
 import os
 import re
 import time
-import validators
 
 import sickbeard
+import validators
+from requests.compat import urljoin
 from sickbeard import logger, tvcache
 from sickbeard.bs4_parser import BS4Parser
 from sickbeard.common import cpu_presets
-
 from sickrage.helper.common import convert_size, try_int
 from sickrage.helper.encoding import ek, ss
 from sickrage.providers.nzb.NZBProvider import NZBProvider
@@ -64,7 +64,8 @@ class NewznabProvider(NZBProvider):  # pylint: disable=too-many-instance-attribu
 
         self.default = False
 
-        self.caps = False
+        self._caps = False
+        self.use_tv_search = None
         self.cap_tv_search = None
         # self.cap_search = None
         # self.cap_movie_search = None
@@ -81,7 +82,7 @@ class NewznabProvider(NZBProvider):  # pylint: disable=too-many-instance-attribu
                 int(self.enable_daily)) + '|' + str(int(self.enable_backlog))
 
     @staticmethod
-    def get_providers_list(data):
+    def providers_list(data):
         default_list = [x for x in (NewznabProvider._make_provider(x) for x in NewznabProvider._get_default_providers().split('!!!')) if x]
         providers_list = [x for x in (NewznabProvider._make_provider(x) for x in data.split('!!!')) if x]
         seen_values = set()
@@ -113,7 +114,8 @@ class NewznabProvider(NZBProvider):  # pylint: disable=too-many-instance-attribu
                 providers_dict[default.name].search_fallback = default.search_fallback
                 providers_dict[default.name].enable_daily = default.enable_daily
                 providers_dict[default.name].enable_backlog = default.enable_backlog
-                providers_dict[default.name].catIDs = default.catIDs
+                providers_dict[default.name].catIDs = ','.join([x for x in providers_dict[default.name].catIDs.split(',')
+                                                                if 5000 <= try_int(x) <= 5999]) or default.catIDs
 
         return [x for x in providers_list if x]
 
@@ -128,21 +130,25 @@ class NewznabProvider(NZBProvider):  # pylint: disable=too-many-instance-attribu
             return self.get_id() + '.png'
         return 'newznab.png'
 
-    def set_caps(self, data):
-        if not data:
+    @property
+    def caps(self):
+        return self._caps
+
+    @caps.setter
+    def caps(self, data):
+        # Override nzb.su - tvsearch without tvdbid, with q param
+        if 'nzb.su' in self.url:
+            self.use_tv_search = True
+            self.cap_tv_search = ''
+            self._caps = True
             return
 
-        def _parse_cap(tag):
-            elm = data.find(tag)
-            return elm.get('supportedparams', 'True') if elm and elm.get('available') else ''
+        elm = data.find('tv-search')
+        self.use_tv_search = elm and elm.get('available') == 'yes'
+        if self.use_tv_search:
+            self.cap_tv_search = elm.get('supportedparams', 'tvdbid,season,ep')
 
-        self.cap_tv_search = _parse_cap('tv-search')
-        # self.cap_search = _parse_cap('search')
-        # self.cap_movie_search = _parse_cap('movie-search')
-        # self.cap_audio_search = _parse_cap('audio-search')
-
-        # self.caps = any([self.cap_tv_search, self.cap_search, self.cap_movie_search, self.cap_audio_search])
-        self.caps = any([self.cap_tv_search])
+        self._caps = any([self.cap_tv_search])
 
     def get_newznab_categories(self, just_caps=False):
         """
@@ -172,7 +178,7 @@ class NewznabProvider(NZBProvider):  # pylint: disable=too-many-instance-attribu
                 logger.log(error_string, logger.DEBUG)
                 return False, return_categories, error_string
 
-            self.set_caps(html.find('searching'))
+            self.caps = html.find('searching')
             if just_caps:
                 return True, return_categories, 'Just checking caps!'
 
@@ -185,14 +191,11 @@ class NewznabProvider(NZBProvider):  # pylint: disable=too-many-instance-attribu
 
             return True, return_categories, ''
 
-        error_string = 'Error getting xml for [{0}]'.format(self.name)
-        logger.log(error_string, logger.WARNING)
-        return False, return_categories, error_string
-
     @staticmethod
     def _get_default_providers():
         # name|url|key|catIDs|enabled|search_mode|search_fallback|enable_daily|enable_backlog
         return 'NZB.Cat|https://nzb.cat/||5030,5040,5010|0|eponly|1|1|1!!!' + \
+            'NZBFinder.ws|https://nzbfinder.ws/||5030,5040,5010,5045|0|eponly|1|1|1!!!' + \
             'NZBGeek|https://api.nzbgeek.info/||5030,5040|0|eponly|0|0|0!!!' + \
             'NZBs.org|https://nzbs.org/||5030,5040|0|eponly|0|0|0!!!' + \
             'Usenet-Crawler|https://www.usenet-crawler.com/||5030,5040|0|eponly|0|0|0!!!' + \
@@ -209,7 +212,7 @@ class NewznabProvider(NZBProvider):  # pylint: disable=too-many-instance-attribu
 
         return True
 
-    def _checkAuthFromData(self, data):
+    def _check_auth_from_data(self, data):
         """
         Checks that the returned data is valid
         Returns: _check_auth if valid otherwise False if there is an error
@@ -220,7 +223,7 @@ class NewznabProvider(NZBProvider):  # pylint: disable=too-many-instance-attribu
         try:
             err_desc = data.error.attrs['description']
             if not err_desc:
-                raise
+                raise AttributeError
         except (AttributeError, TypeError):
             return self._check_auth()
 
@@ -270,17 +273,17 @@ class NewznabProvider(NZBProvider):  # pylint: disable=too-many-instance-attribu
         if not self._check_auth():
             return results
 
-        # gingadaddy has no caps.
-        if not self.caps and 'gingadaddy' not in self.url:
-            self.get_newznab_categories(just_caps=True)
+        if 'gingadaddy' not in self.url:  # gingadaddy has no caps.
+            if not self.caps:
+                self.get_newznab_categories(just_caps=True)
 
-        if not self.caps and 'gingadaddy' not in self.url:
-            return results
+            if not self.caps:
+                return results
 
         for mode in search_strings:
             torznab = False
             search_params = {
-                't': 'tvsearch' if 'tvdbid' in str(self.cap_tv_search) else 'search',
+                't': ('search', 'tvsearch')[bool(self.use_tv_search)],
                 'limit': 100,
                 'offset': 0,
                 'cat': self.catIDs.strip(', ') or '5030,5040',
@@ -291,8 +294,9 @@ class NewznabProvider(NZBProvider):  # pylint: disable=too-many-instance-attribu
                 search_params['apikey'] = self.key
 
             if mode != 'RSS':
-                if search_params['t'] == 'tvsearch':
-                    search_params['tvdbid'] = ep_obj.show.indexerid
+                if self.use_tv_search:
+                    if 'tvdbid' in str(self.cap_tv_search):
+                        search_params['tvdbid'] = ep_obj.show.indexerid
 
                     if ep_obj.show.air_by_date or ep_obj.show.sports:
                         date_str = str(ep_obj.airdate)
@@ -312,7 +316,7 @@ class NewznabProvider(NZBProvider):  # pylint: disable=too-many-instance-attribu
                     logger.log('Search string: {0}'.format
                                (search_string.decode('utf-8')), logger.DEBUG)
 
-                    if search_params['t'] != 'tvsearch':
+                    if 'tvdbid' not in search_params:
                         search_params['q'] = search_string
 
                 time.sleep(cpu_presets[sickbeard.CPU_PRESET])
@@ -321,7 +325,7 @@ class NewznabProvider(NZBProvider):  # pylint: disable=too-many-instance-attribu
                     break
 
                 with BS4Parser(data, 'html5lib') as html:
-                    if not self._checkAuthFromData(html):
+                    if not self._check_auth_from_data(html):
                         break
 
                     try:
@@ -339,9 +343,9 @@ class NewznabProvider(NZBProvider):  # pylint: disable=too-many-instance-attribu
                                 elif validators.url(item.link.next.strip(), require_tld=False):
                                     download_url = item.link.next.strip()
 
-                            if not download_url and item.enclosure:
-                                if validators.url(item.enclosure.get('url', '').strip(), require_tld=False):
-                                    download_url = item.enclosure.get('url', '').strip()
+                            if (not download_url, item.enclosure and
+                                    validators.url(item.enclosure.get('url', '').strip(), require_tld=False)):
+                                download_url = item.enclosure.get('url', '').strip()
 
                             if not (title and download_url):
                                 continue
@@ -367,7 +371,7 @@ class NewznabProvider(NZBProvider):  # pylint: disable=too-many-instance-attribu
                         except StandardError:
                             continue
 
-                # Since we arent using the search string,
+                # Since we aren't using the search string,
                 # break out of the search string loop
                 if 'tvdbid' in search_params:
                     break

@@ -19,10 +19,11 @@
 # along with SickRage. If not, see <http://www.gnu.org/licenses/>.
 
 from __future__ import unicode_literals
-from requests.compat import urljoin
+
 import datetime
 
 import sickbeard
+from requests.compat import urljoin
 from sickbeard import helpers, logger
 
 session = helpers.make_session()

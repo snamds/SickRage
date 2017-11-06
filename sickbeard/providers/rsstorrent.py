@@ -23,12 +23,11 @@ from __future__ import unicode_literals
 import io
 import os
 import re
-from requests.utils import add_dict_to_cookiejar
+
 import bencode
-
 import sickbeard
+from requests.utils import add_dict_to_cookiejar
 from sickbeard import helpers, logger, tvcache
-
 from sickrage.helper.encoding import ek
 from sickrage.helper.exceptions import ex
 from sickrage.providers.torrent.TorrentProvider import TorrentProvider
@@ -69,7 +68,7 @@ class TorrentRssProvider(TorrentProvider):  # pylint: disable=too-many-instance-
         )
 
     @staticmethod
-    def get_providers_list(data):
+    def providers_list(data):
         providers_list = [x for x in (TorrentRssProvider._make_provider(x) for x in data.split('!!!')) if x]
         seen_values = set()
         providers_set = []
@@ -156,7 +155,7 @@ class TorrentRssProvider(TorrentProvider):  # pylint: disable=too-many-instance-
 
             # pylint: disable=protected-access
             # Access to a protected member of a client class
-            data = self.cache._getRSSData()['entries']
+            data = self.cache._get_rss_data()['entries']
             if not data:
                 return False, 'No items found in the RSS feed {0}'.format(self.url)
 
@@ -201,8 +200,8 @@ class TorrentRssProvider(TorrentProvider):  # pylint: disable=too-many-instance-
 
 
 class TorrentRssCache(tvcache.TVCache):
-    def _getRSSData(self):
+    def _get_rss_data(self):
         if self.provider.cookies:
             add_dict_to_cookiejar(self.provider.session.cookies, dict(x.rsplit('=', 1) for x in self.provider.cookies.split(';')))
 
-        return self.getRSSFeed(self.provider.url)
+        return self.get_rss_feed(self.provider.url)

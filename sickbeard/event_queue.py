@@ -1,9 +1,13 @@
 # coding=utf-8
+
+from __future__ import print_function, unicode_literals
+
 import threading
 import traceback
-from Queue import Queue, Empty
+
 from sickbeard import logger
 from sickrage.helper.exceptions import ex
+from six.moves.queue import Empty, Queue
 
 
 class Event(object):
@@ -48,7 +52,7 @@ class Events(threading.Thread):
             # exiting thread
             self.stop.clear()
         except Exception as e:
-            logger.log(u"Exception generated in thread " + self.name + ": " + ex(e), logger.ERROR)
+            logger.log("Exception generated in thread " + self.name + ": " + ex(e), logger.ERROR)
             logger.log(repr(traceback.format_exc()), logger.DEBUG)
 
     # System Events

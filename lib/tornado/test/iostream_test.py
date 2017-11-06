@@ -1,4 +1,4 @@
-from __future__ import absolute_import, division, print_function, with_statement
+from __future__ import absolute_import, division, print_function
 from tornado.concurrent import Future
 from tornado import gen
 from tornado import netutil
@@ -18,6 +18,14 @@ import platform
 import socket
 import ssl
 import sys
+
+try:
+    from unittest import mock  # type: ignore
+except ImportError:
+    try:
+        import mock  # type: ignore
+    except ImportError:
+        mock = None
 
 
 def _server_ssl_options():
@@ -239,19 +247,22 @@ class TestIOStreamMixin(object):
             # cygwin's errnos don't match those used on native windows python
             self.assertTrue(stream.error.args[0] in _ERRNO_CONNREFUSED)
 
+    @unittest.skipIf(mock is None, 'mock package not present')
     def test_gaierror(self):
-        # Test that IOStream sets its exc_info on getaddrinfo error
+        # Test that IOStream sets its exc_info on getaddrinfo error.
+        # It's difficult to reliably trigger a getaddrinfo error;
+        # some resolvers own't even return errors for malformed names,
+        # so we mock it instead. If IOStream changes to call a Resolver
+        # before sock.connect, the mock target will need to change too.
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
         stream = IOStream(s, io_loop=self.io_loop)
         stream.set_close_callback(self.stop)
-        # To reliably generate a gaierror we use a malformed domain name
-        # instead of a name that's simply unlikely to exist (since
-        # opendns and some ISPs return bogus addresses for nonexistent
-        # domains instead of the proper error codes).
-        with ExpectLog(gen_log, "Connect error"):
-            stream.connect(('an invalid domain', 54321), callback=self.stop)
-            self.wait()
-            self.assertTrue(isinstance(stream.error, socket.gaierror), stream.error)
+        with mock.patch('socket.socket.connect',
+                        side_effect=socket.gaierror(errno.EIO, 'boom')):
+            with ExpectLog(gen_log, "Connect error"):
+                stream.connect(('localhost', 80), callback=self.stop)
+                self.wait()
+                self.assertIsInstance(stream.error, socket.gaierror)
 
     def test_read_callback_error(self):
         # Test that IOStream sets its exc_info when a read callback throws
@@ -446,6 +457,18 @@ class TestIOStreamMixin(object):
             server.close()
             client.close()
 
+    @unittest.skipIf(mock is None, 'mock package not present')
+    def test_read_until_close_with_error(self):
+        server, client = self.make_iostream_pair()
+        try:
+            with mock.patch('tornado.iostream.BaseIOStream._try_inline_read',
+                            side_effect=IOError('boom')):
+                with self.assertRaisesRegexp(IOError, 'boom'):
+                    client.read_until_close(self.stop)
+        finally:
+            server.close()
+            client.close()
+
     def test_streaming_read_until_close_after_close(self):
         # Same as the preceding test but with a streaming_callback.
         # All data should go through the streaming callback,
@@ -575,6 +598,17 @@ class TestIOStreamMixin(object):
             client.close()
             self.wait()
             self.assertTrue(closed[0])
+        finally:
+            server.close()
+            client.close()
+
+    def test_write_memoryview(self):
+        server, client = self.make_iostream_pair()
+        try:
+            client.read_bytes(4, self.stop)
+            server.write(memoryview(b"hello"))
+            data = self.wait()
+            self.assertEqual(data, b"hell")
         finally:
             server.close()
             client.close()
@@ -774,6 +808,40 @@ class TestIOStreamMixin(object):
             server.close()
             client.close()
 
+    def test_future_write(self):
+        """
+        Test that write() Futures are never orphaned.
+        """
+        # Run concurrent writers that will write enough bytes so as to
+        # clog the socket buffer and accumulate bytes in our write buffer.
+        m, n = 10000, 1000
+        nproducers = 10
+        total_bytes = m * n * nproducers
+        server, client = self.make_iostream_pair(max_buffer_size=total_bytes)
+
+        @gen.coroutine
+        def produce():
+            data = b'x' * m
+            for i in range(n):
+                yield server.write(data)
+
+        @gen.coroutine
+        def consume():
+            nread = 0
+            while nread < total_bytes:
+                res = yield client.read_bytes(m)
+                nread += len(res)
+
+        @gen.coroutine
+        def main():
+            yield [produce() for i in range(nproducers)] + [consume()]
+
+        try:
+            self.io_loop.run_sync(main)
+        finally:
+            server.close()
+            client.close()
+
 
 class TestIOStreamWebHTTP(TestIOStreamWebMixin, AsyncHTTPTestCase):
     def _make_client_iostream(self):
@@ -928,8 +996,10 @@ class TestIOStreamStartTLS(AsyncTestCase):
             server_hostname=b'127.0.0.1')
         with ExpectLog(gen_log, "SSL Error"):
             with self.assertRaises(ssl.SSLError):
+                # The client fails to connect with an SSL error.
                 yield client_future
-        with self.assertRaises((ssl.SSLError, socket.error)):
+        with self.assertRaises(Exception):
+            # The server fails to connect, but the exact error is unspecified.
             yield server_future
 
 

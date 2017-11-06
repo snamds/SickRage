@@ -17,11 +17,13 @@
 # You should have received a copy of the GNU General Public License
 # along with SickRage. If not, see <http://www.gnu.org/licenses/>.
 
-import sickbeard
+from __future__ import unicode_literals
 
 from abc import abstractmethod
 from mimetypes import guess_type
 from os.path import isfile, join, normpath
+
+import sickbeard
 from sickrage.helper.common import try_int
 from sickrage.helper.encoding import ek
 from sickrage.helper.exceptions import MultipleShowObjectsException
@@ -77,7 +79,7 @@ class GenericMedia(object):
         :return: The root folder containing the media
         """
 
-        return ek(join, sickbeard.PROG_DIR, 'gui', 'slick')
+        return ek(join, sickbeard.PROG_DIR, 'gui', sickbeard.GUI_NAME or 'slick')
 
     def get_media_type(self):
         """

@@ -1,5 +1,6 @@
 <%inherit file="/layouts/main.mako"/>
 <%!
+    import six
     import sickbeard
     from sickbeard import helpers
     from sickbeard.show_queue import ShowQueueActions
@@ -15,7 +16,7 @@
         _('Show Queue'): 'showQueueScheduler',
         _('Search Queue'): 'searchQueueScheduler',
         _('Proper Finder'): 'properFinderScheduler',
-        _('Post Process'): 'autoPostProcesserScheduler',
+        _('Post Process'): 'autoPostProcessorScheduler',
         _('Subtitles Finder'): 'subtitlesFinderScheduler',
         _('Trakt Checker'): 'traktCheckerScheduler',
     }
@@ -29,6 +30,7 @@
             % endif
         </div>
     </div>
+    <br/>
     <div class="row">
         <div class="col-md-12">
 
@@ -49,7 +51,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        % for schedulerName, scheduler in schedulerList.iteritems():
+                        % for schedulerName, scheduler in six.iteritems(schedulerList):
                         <% service = getattr(sickbeard, scheduler) %>
                             <tr>
                                 <td>${schedulerName}</td>
@@ -117,6 +119,7 @@
             </div>
         </div>
     </div>
+    <br/>
     <div class="row">
         <div class="col-md-12">
             <h2 class="header">${_('Show Queue')}</h2>
@@ -202,6 +205,7 @@
             </div>
         </div>
     </div>
+    <br/>
     <div class="row">
         <div class="col-md-12">
             <h2 class="header">${_('Disk Space')}</h2>

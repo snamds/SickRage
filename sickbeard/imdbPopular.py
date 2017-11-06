@@ -1,11 +1,14 @@
 # coding=utf-8
-import re
+
+from __future__ import print_function, unicode_literals
+
 import os
 import posixpath
-from bs4 import BeautifulSoup
+import re
 from datetime import date
 
 import sickbeard
+from bs4 import BeautifulSoup
 from sickbeard import helpers
 from sickrage.helper.encoding import ek
 
@@ -68,7 +71,7 @@ class imdbPopular(object):
                 if outline and len(outline) >= 2:
                     show['outline'] = outline[1].contents[0].strip("\"")
                 else:
-                    show['outline'] = u''
+                    show['outline'] = ''
 
                 popular_shows.append(show)
 
@@ -76,7 +79,7 @@ class imdbPopular(object):
 
     @staticmethod
     def change_size(image_url, factor=3):
-        match = re.search("^(.*)V1._(.{2})(.*?)_(.{2})(.*?),(.*?),(.*?),(.*?)_.jpg$", image_url)
+        match = re.search("^(.*)V1_(.{2})(.*?)_(.{2})(.*?),(.*?),(.*?),(.\d?)_(.*?)_.jpg$", image_url)
 
         if match:
             matches = match.groups()

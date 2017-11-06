@@ -18,14 +18,14 @@
 # You should have received a copy of the GNU General Public License
 # along with SickRage. If not, see <http://www.gnu.org/licenses/>.
 
+from __future__ import print_function, unicode_literals
+
 import re
 
 from requests.compat import urljoin
 from requests.utils import dict_from_cookiejar
-
 from sickbeard import logger, tvcache
 from sickbeard.bs4_parser import BS4Parser
-
 from sickrage.helper.common import convert_size, try_int
 from sickrage.providers.torrent.TorrentProvider import TorrentProvider
 
@@ -68,13 +68,20 @@ class SpeedCDProvider(TorrentProvider):  # pylint: disable=too-many-instance-att
             'password': self.password,
         }
 
+        # Yay lets add another request to the process since they are unreasonable.
+        response = self.get_url(self.url, returns='text')
+        with BS4Parser(response, 'html5lib') as html:
+            form = html.find('form', id='loginform')
+            if form:
+                self.urls['login'] = urljoin(self.url, form['action'])
+
         response = self.get_url(self.urls['login'], post_data=login_params, returns='text')
         if not response:
-            logger.log(u"Unable to connect to provider", logger.WARNING)
+            logger.log("Unable to connect to provider", logger.WARNING)
             return False
 
         if re.search('Incorrect username or Password. Please try again.', response):
-            logger.log(u"Invalid username or password. Check your settings", logger.WARNING)
+            logger.log("Invalid username or password. Check your settings", logger.WARNING)
             return False
 
         return True
@@ -87,7 +94,6 @@ class SpeedCDProvider(TorrentProvider):  # pylint: disable=too-many-instance-att
         # http://speed.cd/browse.php?c49=1&c50=1&c52=1&c41=1&c55=1&c2=1&c30=1&freeleech=on&search=arrow&d=on
         # Search Params
         search_params = {
-            'c2': 1,  # TV/Episodes
             'c30': 1,  # Anime
             'c41': 1,  # TV/Packs
             'c49': 1,  # TV/HD
@@ -102,10 +108,9 @@ class SpeedCDProvider(TorrentProvider):  # pylint: disable=too-many-instance-att
 
         def process_column_header(td):
             result = ''
-            if td.a and td.a.img:
-                result = td.a.img.get('alt', td.a.get_text(strip=True))
-            if td.img and not result:
-                result = td.img.get('alt', '')
+            img = td.find('img')
+            if img:
+                result = img.get('alt')
             if not result:
                 result = td.get_text(strip=True)
             return result
@@ -115,12 +120,12 @@ class SpeedCDProvider(TorrentProvider):  # pylint: disable=too-many-instance-att
 
         for mode in search_strings:
             items = []
-            logger.log(u"Search Mode: {0}".format(mode), logger.DEBUG)
+            logger.log("Search Mode: {0}".format(mode), logger.DEBUG)
 
             for search_string in search_strings[mode]:
 
                 if mode != 'RSS':
-                    logger.log(u"Search string: {0}".format
+                    logger.log("Search string: {0}".format
                                (search_string.decode("utf-8")), logger.DEBUG)
 
                 search_params['search'] = search_string
@@ -136,7 +141,7 @@ class SpeedCDProvider(TorrentProvider):  # pylint: disable=too-many-instance-att
 
                     # Continue only if at least one Release is found
                     if len(torrent_rows) < 2:
-                        logger.log(u"Data returned from provider does not contain any torrents", logger.DEBUG)
+                        logger.log("Data returned from provider does not contain any torrents", logger.DEBUG)
                         continue
 
                     labels = [process_column_header(label) for label in torrent_rows[0]('th')]
@@ -147,26 +152,27 @@ class SpeedCDProvider(TorrentProvider):  # pylint: disable=too-many-instance-att
                             cells = result('td')
 
                             title = cells[labels.index('Title')].find('a', class_='torrent').get_text()
-                            download_url = urljoin(self.url, cells[labels.index('Download')].find(title='Download').parent['href'])
+                            download_url = urljoin(self.url, cells[labels.index('Download') - 1].a['href'])
                             if not all([title, download_url]):
                                 continue
 
-                            seeders = try_int(cells[labels.index('Seeders')].get_text(strip=True))
-                            leechers = try_int(cells[labels.index('Leechers')].get_text(strip=True))
+                            seeders = try_int(cells[labels.index('Seeders') - 1].get_text(strip=True))
+                            leechers = try_int(cells[labels.index('Leechers') - 1].get_text(strip=True))
 
                             # Filter unseeded torrent
                             if seeders < self.minseed or leechers < self.minleech:
                                 if mode != 'RSS':
-                                    logger.log(u"Discarding torrent because it doesn't meet the minimum seeders or leechers: {0} (S:{1} L:{2})".format(title, seeders, leechers), logger.DEBUG)
+                                    logger.log(
+                                        "Discarding torrent because it doesn't meet the minimum seeders or leechers: {0} (S:{1} L:{2})".format(title, seeders, leechers), logger.DEBUG)
                                 continue
 
-                            torrent_size = cells[labels.index('Size')].get_text()
+                            torrent_size = cells[labels.index('Size') - 1].get_text()
                             torrent_size = torrent_size[:-2] + ' ' + torrent_size[-2:]
                             size = convert_size(torrent_size, units=units) or -1
 
                             item = {'title': title, 'link': download_url, 'size': size, 'seeders': seeders, 'leechers': leechers, 'hash': ''}
                             if mode != 'RSS':
-                                logger.log(u"Found result: {0} with {1} seeders and {2} leechers".format(title, seeders, leechers), logger.DEBUG)
+                                logger.log("Found result: {0} with {1} seeders and {2} leechers".format(title, seeders, leechers), logger.DEBUG)
 
                             items.append(item)
                         except StandardError:

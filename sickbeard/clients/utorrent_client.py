@@ -21,9 +21,10 @@ from __future__ import unicode_literals
 
 import re
 from collections import OrderedDict
-from requests.compat import urljoin
 
 import sickbeard
+import six
+from requests.compat import urljoin
 from sickbeard.clients.generic import GenericClient
 
 
@@ -40,7 +41,7 @@ class uTorrentAPI(GenericClient):
         Overrides the parent _request method to add the auth token
         """
         ordered_params = OrderedDict({'token': self.auth})
-        for k, v in params.iteritems() or {}:
+        for k, v in six.iteritems(params) or {}:
             ordered_params.update({k: v})
 
         return super(uTorrentAPI, self)._request(method=method, params=ordered_params, data=data, files=files, cookies=cookies)

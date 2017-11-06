@@ -18,10 +18,11 @@
 # You should have received a copy of the GNU General Public License
 # along with SickRage. If not, see <http://www.gnu.org/licenses/>.
 
-from adba.aniDBerrors import AniDBCommandTimeoutError
+from __future__ import print_function, unicode_literals
 
 import sickbeard
-from sickbeard import db, logger, helpers
+from adba.aniDBerrors import AniDBCommandTimeoutError
+from sickbeard import db, helpers, logger
 
 
 class BlackAndWhiteList(object):
@@ -38,7 +39,7 @@ class BlackAndWhiteList(object):
         """
         Builds black and whitelist
         """
-        logger.log(u'Building black and white list for {id}'.format(id=self.show_id), logger.DEBUG)
+        logger.log('Building black and white list for {id}'.format(id=self.show_id), logger.DEBUG)
         self.blacklist = self._load_list(b'blacklist')
         self.whitelist = self._load_list(b'whitelist')
 
@@ -62,7 +63,7 @@ class BlackAndWhiteList(object):
         self._del_all_keywords(b'blacklist')
         self._add_keywords(b'blacklist', values)
         self.blacklist = values
-        logger.log(u'Blacklist set to: {blacklist}'.format(blacklist=self.blacklist), logger.DEBUG)
+        logger.log('Blacklist set to: {blacklist}'.format(blacklist=self.blacklist), logger.DEBUG)
 
     def set_white_keywords(self, values):
         """
@@ -73,7 +74,7 @@ class BlackAndWhiteList(object):
         self._del_all_keywords(b'whitelist')
         self._add_keywords(b'whitelist', values)
         self.whitelist = values
-        logger.log(u'Whitelist set to: {whitelist}'.format(whitelist=self.whitelist), logger.DEBUG)
+        logger.log('Whitelist set to: {whitelist}'.format(whitelist=self.whitelist), logger.DEBUG)
 
     def _del_all_keywords(self, table):
         """
@@ -100,7 +101,7 @@ class BlackAndWhiteList(object):
         for result in sql_results:
             groups.append(result[b'keyword'])
 
-        logger.log(u'BWL: {id} loaded keywords from {table}: {groups}'.format
+        logger.log('BWL: {id} loaded keywords from {table}: {groups}'.format
                    (id=self.show_id, table=table, groups=groups), logger.DEBUG)
 
         return groups
@@ -115,7 +116,7 @@ class BlackAndWhiteList(object):
 
         if self.whitelist or self.blacklist:
             if not result.release_group:
-                logger.log(u'Failed to detect release group, invalid result', logger.DEBUG)
+                logger.log('Failed to detect release group, invalid result', logger.DEBUG)
                 return False
 
             if result.release_group.lower() in [x.lower() for x in self.whitelist]:
@@ -129,7 +130,7 @@ class BlackAndWhiteList(object):
             else:
                 black_result = True
 
-            logger.log(u'Whitelist check passed: {white}. Blacklist check passed: {black}'.format
+            logger.log('Whitelist check passed: {white}. Blacklist check passed: {black}'.format
                        (white=white_result, black=black_result), logger.DEBUG)
 
             if white_result and black_result:
@@ -137,7 +138,7 @@ class BlackAndWhiteList(object):
             else:
                 return False
         else:
-            logger.log(u'No Whitelist and Blacklist defined, check passed.', logger.DEBUG)
+            logger.log('No Whitelist and Blacklist defined, check passed.', logger.DEBUG)
             return True
 
 
@@ -159,9 +160,9 @@ def short_group_names(groups):
             try:
                 group = sickbeard.ADBA_CONNECTION.group(gname=groupName)
             except AniDBCommandTimeoutError:
-                logger.log(u'Timeout while loading group from AniDB. Trying next group', logger.DEBUG)
+                logger.log('Timeout while loading group from AniDB. Trying next group', logger.DEBUG)
             except Exception:
-                logger.log(u'Failed while loading group from AniDB. Trying next group', logger.DEBUG)
+                logger.log('Failed while loading group from AniDB. Trying next group', logger.DEBUG)
             else:
                 for line in group.datalines:
                     if line[b'shortname']:

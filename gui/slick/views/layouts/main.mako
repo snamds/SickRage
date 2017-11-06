@@ -12,8 +12,7 @@
         import resource
     except ImportError:
         has_resource_module = False
-%>
-<%
+
     srRoot = sickbeard.WEB_ROOT
 %>
 <!DOCTYPE html>
@@ -21,6 +20,7 @@
     <head>
         <meta charset="utf-8">
         <meta name="robots" content="noindex, nofollow">
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
         <meta http-equiv="X-UA-Compatible" content="IE=edge">
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
 
@@ -31,6 +31,8 @@
         <meta name="msapplication-navbutton-color" content="${themeColors[sickbeard.THEME_NAME]}">
         <!-- iOS -->
         <meta name="apple-mobile-web-app-status-bar-style" content="${themeColors[sickbeard.THEME_NAME]}">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="mobile-web-app-capable" content="yes">
 
         <title>SickRage - ${title}</title>
 
@@ -48,11 +50,13 @@
         <meta data-var="anonURL" data-content="${sickbeard.ANON_REDIRECT}">
 
         <meta data-var="sickbeard.ANIME_SPLIT_HOME" data-content="${sickbeard.ANIME_SPLIT_HOME}">
+        <meta data-var="sickbeard.ANIME_SPLIT_HOME_IN_TABS" data-content="${sickbeard.ANIME_SPLIT_HOME_IN_TABS}">
         <meta data-var="sickbeard.COMING_EPS_LAYOUT" data-content="${sickbeard.COMING_EPS_LAYOUT}">
         <meta data-var="sickbeard.COMING_EPS_SORT" data-content="${sickbeard.COMING_EPS_SORT}">
         <meta data-var="sickbeard.DATE_PRESET" data-content="${sickbeard.DATE_PRESET}">
         <meta data-var="sickbeard.FUZZY_DATING" data-content="${sickbeard.FUZZY_DATING}">
         <meta data-var="sickbeard.HISTORY_LAYOUT" data-content="${sickbeard.HISTORY_LAYOUT}">
+        <meta data-var="sickbeard.USE_SUBTITLES" data-content="${sickbeard.USE_SUBTITLES}">
         <meta data-var="sickbeard.HOME_LAYOUT" data-content="${sickbeard.HOME_LAYOUT}">
         <meta data-var="sickbeard.POSTER_SORTBY" data-content="${sickbeard.POSTER_SORTBY}">
         <meta data-var="sickbeard.POSTER_SORTDIR" data-content="${sickbeard.POSTER_SORTDIR}">
@@ -60,6 +64,7 @@
         <meta data-var="sickbeard.SORT_ARTICLE" data-content="${sickbeard.SORT_ARTICLE}">
         <meta data-var="sickbeard.TIME_PRESET" data-content="${sickbeard.TIME_PRESET}">
         <meta data-var="sickbeard.TRIM_ZERO" data-content="${sickbeard.TRIM_ZERO}">
+        <meta data-var="sickbeard.SICKRAGE_BACKGROUND" data-content="${sickbeard.SICKRAGE_BACKGROUND}">
         <meta data-var="sickbeard.FANART_BACKGROUND" data-content="${sickbeard.FANART_BACKGROUND}">
         <meta data-var="sickbeard.FANART_BACKGROUND_OPACITY" data-content="${sickbeard.FANART_BACKGROUND_OPACITY}">
         <%block name="metas" />
@@ -87,21 +92,23 @@
         <link rel="stylesheet" type="text/css" href="${srRoot}/css/lib/jquery.qtip-2.2.1.min.css?${sbPID}"/>
         <link rel="stylesheet" type="text/css" href="${srRoot}/css/style.css?${sbPID}"/>
         <link rel="stylesheet" type="text/css" href="${srRoot}/css/print.css?${sbPID}" />
+        <link rel="stylesheet" type="text/css" href="${srRoot}/css/country-flags.css?${sbPID}"/>
 
-        %if sickbeard.THEME_NAME != "light":
+        % if sickbeard.THEME_NAME != "light":
             <link rel="stylesheet" type="text/css" href="${srRoot}/css/${sickbeard.THEME_NAME}.css?${sbPID}" />
-        %endif
-
-        % if srLogin:
-            <link rel="stylesheet" type="text/css" href="${srRoot}/css/country-flags.css?${sbPID}"/>
         % endif
+
         <%block name="css" />
+
+        % if sickbeard.CUSTOM_CSS:
+            <link rel="stylesheet" type="text/css" href="${srRoot}/ui/custom.css" />
+        % endif
     </head>
     <body data-controller="${controller}" data-action="${action}">
         <nav class="navbar navbar-default navbar-fixed-top hidden-print" role="navigation">
             <div class="container-fluid">
                 <div class="navbar-header">
-                    <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1">
+                    <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#collapsible-navbar">
                         <span class="sr-only">Toggle navigation</span>
                         <span class="icon-bar"></span>
                         <span class="icon-bar"></span>
@@ -110,7 +117,7 @@
                     <a class="navbar-brand" href="${srRoot}/home/" title="SickRage"><img alt="SickRage" src="${srRoot}/images/sickrage.png" style="height: 50px;padding: 3px;" class="img-responsive pull-left" /></a>
                 </div>
                 % if srLogin:
-                    <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
+                    <div class="collapse navbar-collapse" id="collapsible-navbar">
                         <ul class="nav navbar-nav navbar-right">
                             <li id="NAVhome" class="navbar-split dropdown${('', ' active')[topmenu == 'home']}">
                                 <a href="${srRoot}/home/" class="dropdown-toggle" aria-haspopup="true" data-toggle="dropdown" data-hover="dropdown"><span>${_('Shows')}</span>
@@ -156,8 +163,8 @@
                                     % if sickbeard.USE_EMBY and sickbeard.EMBY_HOST != "" and sickbeard.EMBY_APIKEY != "":
                                         <li><a href="${srRoot}/home/updateEMBY/"><i class="menu-icon-emby"></i>&nbsp;${_('Update Emby')}</a></li>
                                     % endif
-                                    % if sickbeard.USE_TORRENTS and sickbeard.TORRENT_METHOD != 'blackhole' and (sickbeard.ENABLE_HTTPS and sickbeard.TORRENT_HOST[:5] == 'https' or not sickbeard.ENABLE_HTTPS and sickbeard.TORRENT_HOST[:5] == 'http:'):
-                                        <li><a href="${srRoot}/manage/manageTorrents/"><i class="fa fa-download"></i>&nbsp;${_('Manage Torrents')}</a></li>
+                                    % if manage_torrents_url:
+                                        <li><a href="${manage_torrents_url}" target="_blank"><i class="fa fa-download"></i>&nbsp;${_('Manage Torrents')}</a></li>
                                     % endif
                                     % if sickbeard.USE_FAILED_DOWNLOADS:
                                         <li><a href="${srRoot}/manage/failedDownloads/"><i class="fa fa-thumbs-o-down"></i>&nbsp;${_('Failed Downloads')}</a></li>
@@ -227,7 +234,7 @@
                                     <li><a href="${srRoot}/home/updateCheck?pid=${sbPID}"><i class="fa fa-wrench"></i>&nbsp;${_('Check For Updates')}</a></li>
                                     <li><a href="${srRoot}/home/restart/?pid=${sbPID}" class="confirm restart"><i class="fa fa-repeat"></i>&nbsp;${_('Restart')}</a></li>
                                     <li><a href="${srRoot}/home/shutdown/?pid=${sbPID}" class="confirm shutdown"><i class="fa fa-power-off"></i>&nbsp;${_('Shutdown')}</a></li>
-                                    % if srLogin is not True:
+                                    % if srLogin:
                                         <li><a href="${srRoot}/logout" class="confirm logout"><i class="fa fa-sign-out"></i>&nbsp;${_('Logout')}</a></li>
                                     % endif
                                     <li role="separator" class="divider"></li>
@@ -246,39 +253,30 @@
                     <div id="sub-menu" class="hidden-print">
                         <% first = True %>
                         % for menuItem in reversed(submenu):
-                            % if 'requires' not in menuItem or menuItem['requires']:
-                                <% icon_class = '' if 'icon' not in menuItem else menuItem['icon'] %>
-                                % if type(menuItem['path']) == dict:
+                            % if menuItem.get('requires', 1):
+                                % if isinstance(menuItem['path'], dict):
                                     ${("</span><span>", "")[bool(first)]}<b>${menuItem['title']}</b>
                                     <%
                                         first = False
                                         inner_first = True
                                     %>
                                     % for cur_link in menuItem['path']:
-                                        ${("&middot; ", "")[bool(inner_first)]}<a class="inner" href="${srRoot}/${menuItem['path'][cur_link]}">${cur_link}</a>
+                                        ${("&middot;", "")[bool(inner_first)]}<a href="${srRoot}/${menuItem['path'][cur_link]}" class="inner ${menuItem.get('class', '')}">${cur_link}</a>
                                         <% inner_first = False %>
                                     % endfor
                                 % else:
-                                    <a href="${srRoot}/${menuItem['path']}" class="btn${('', ' confirm ' + menuItem.get('class', ''))['confirm' in menuItem]}">
-                                        ${('', '<span class="pull-left"><i class="' + icon_class + '"></i>' + menuItem['title'] + '</span> ')[bool(icon_class)]}
+                                    <a href="${srRoot}/${menuItem['path']}" class="btn ${('', ' confirm ')['confirm' in menuItem] + menuItem.get('class', '')}">
+                                        <i class='${menuItem.get('icon', '')}'></i> ${menuItem['title']}
                                     </a>
-                                <% first = False %>
+                                    <% first = False %>
                                 % endif
                             % endif
                         % endfor
                     </div>
                 % endif
                 <div class="clearfix"></div>
-                % if sickbeard.BRANCH and sickbeard.BRANCH != 'master' and not sickbeard.DEVELOPER and srLogin:
-                    <div class="alert alert-danger upgrade-notification hidden-print" role="alert">
-                        <span>${_('You\'re using the {branch} branch. Please use \'master\' unless specifically asked').format(branch=sickbeard.BRANCH)}</span>
-                    </div>
-                % endif
-
-                % if sickbeard.NEWEST_VERSION_STRING and srLogin:
-                    <div class="alert alert-success upgrade-notification hidden-print" role="alert">
-                        <span>${sickbeard.NEWEST_VERSION_STRING}</span>
-                    </div>
+                % if srLogin:
+                    <div id="site-messages"/>
                 % endif
             </div>
             <div class="row">
@@ -286,6 +284,22 @@
                     <%block name="content" />
                 </div>
             </div>
+
+            <div class="modal fade" id="site-notification-modal">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <button type="button" class="close" data-dismiss="modal" aria-hidden="true">x</button>
+                            <h4 class="modal-title">Notice</h4>
+                        </div>
+                        <div class="modal-body"></div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-primary" data-dismiss="modal">Ok</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             % if srLogin:
                 <div class="row">
                     <div class="footer clearfix col-lg-10 col-lg-offset-1 col-md-10 col-md-offset-1 col-sm-12 col-xs-12">
@@ -323,9 +337,7 @@
                     </div>
                 </div>
                 <script type="text/javascript" src="${srRoot}/js/vender.min.js?${sbPID}"></script>
-                <script type="text/javascript" src="${srRoot}/js/lib/jquery.cookiejar.js?${sbPID}"></script>
                 <script type="text/javascript" src="${srRoot}/js/lib/jquery.form.min.js?${sbPID}"></script>
-                <script type="text/javascript" src="${srRoot}/js/lib/jquery.json-2.2.min.js?${sbPID}"></script>
                 <script type="text/javascript" src="${srRoot}/js/lib/jquery.selectboxes.min.js?${sbPID}"></script>
                 <script type="text/javascript" src="${srRoot}/js/lib/formwizard.js?${sbPID}"></script><!-- Can't be added to bower -->
                 <script type="text/javascript" src="${srRoot}/js/parsers.js?${sbPID}"></script>
@@ -336,7 +348,7 @@
                     <script type="text/javascript" src="${srRoot}/js/core.min.js?${sbPID}"></script>
                 % endif
                 <script type="text/javascript" src="${srRoot}/js/lib/jquery.scrolltopcontrol-1.1.js?${sbPID}"></script>
-                <script type="text/javascript" src="${srRoot}/js/browser.js?${sbPID}"></script>
+                <script type="text/javascript" src="${srRoot}/js/browser.js?${sbPID}" charset="utf-8"></script>
                 <script type="text/javascript" src="${srRoot}/js/ajaxNotifications.js?${sbPID}"></script>
             % endif
             <%block name="scripts" />
