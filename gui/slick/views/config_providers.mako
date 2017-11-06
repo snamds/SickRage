@@ -6,9 +6,10 @@
 %>
 
 <%block name="scripts">
-    <script type="text/javascript" src="${srRoot}/js/configProviders.js"></script>
+    <script type="text/javascript" src="${static_url('js/configProviders.js')}"></script>
     <script type="text/javascript">
         $(document).ready(function() {
+            $('#config-components').tabs();
             % if sickbeard.USE_NZBS:
                 var show_nzb_providers = ${("false", "true")[bool(sickbeard.USE_NZBS)]};
                 % for curNewznabProvider in sickbeard.newznabProviderList:
@@ -21,7 +22,6 @@
                 % endfor
             % endif
         });
-        $('#config-components').tabs();
     </script>
 </%block>
 
@@ -70,7 +70,7 @@
                             % for curProvider in sickbeard.providers.sortedProviderList():
                             <%
                                 ## These will show the '!' not saying they are broken
-                                broken_providers = {}
+                                broken_providers = {'torrentproject', 'cpasbien'}
                                 if curProvider.provider_type == GenericProvider.NZB and not sickbeard.USE_NZBS:
                                     continue
                                 elif curProvider.provider_type == GenericProvider.TORRENT and not sickbeard.USE_TORRENTS:
@@ -86,7 +86,7 @@
                                     <input type="checkbox" id="enable_${curName}" class="provider_enabler" ${('', 'checked="checked"')[curProvider.is_enabled() is True]}/>
                                     <a href="${anon_url(curURL)}" class="imgLink" rel="noreferrer"
                                        onclick="window.open(this.href, '_blank'); return false;">
-                                        <img src="${srRoot}/images/providers/${curProvider.image_name()}"
+                                        <img src="${static_url('images/providers/' + curProvider.image_name())}"
                                             alt="${curProvider.name}" title="${curProvider.name}" width="16"
                                             height="16" style="vertical-align:middle;"/>
                                     </a>
@@ -141,7 +141,7 @@
                                         % endfor
                                     </select>
                                 % else:
-                                    <label>${_('No providers available to configure.')}</label>
+                                    <label>${_('no providers available to configure.')}</label>
                                 % endif
                             </div>
                         </div>
@@ -184,7 +184,7 @@
                                         <div class="col-lg-9 col-md-8 col-sm-7 col-xs-12 component-desc">
                                             <input type="checkbox" name="${curNewznabProvider.get_id()}_enable_daily"
                                                    id="${curNewznabProvider.get_id()}_enable_daily" ${('', 'checked="checked"')[bool(curNewznabProvider.enable_daily)]}/>
-                                            <label for="${curNewznabProvider.get_id()}">${_('enable provider to perform daily searches.')}</label>
+                                            <label for="${curNewznabProvider.get_id()}_enable_daily">${_('enable provider to perform daily searches.')}</label>
                                         </div>
                                     </div>
                                 % endif
@@ -217,14 +217,16 @@
                                                 <div class="col-md-12">
                                                     <input type="radio" name="${curNewznabProvider.get_id()}_search_mode"
                                                            id="${curNewznabProvider.get_id()}_search_mode_sponly"
-                                                           value="sponly" ${('', 'checked="checked"')[curNewznabProvider.search_mode=="sponly"]}/>${_('season packs only.')}
+                                                           value="sponly" ${('', 'checked="checked"')[curNewznabProvider.search_mode=="sponly"]}/>
+                                                    <label for="${curNewznabProvider.get_id()}_search_mode_sponly">${_('season packs only.')}</label>
                                                 </div>
                                             </div>
                                             <div class="row">
                                                 <div class="col-md-12">
                                                     <input type="radio" name="${curNewznabProvider.get_id()}_search_mode"
                                                            id="${curNewznabProvider.get_id()}_search_mode_eponly"
-                                                           value="eponly" ${('', 'checked="checked"')[curNewznabProvider.search_mode=="eponly"]}/>${_('episodes only.')}
+                                                           value="eponly" ${('', 'checked="checked"')[curNewznabProvider.search_mode=="eponly"]}/>
+                                                    <label for="${curNewznabProvider.get_id()}_search_mode_eponly">${_('episodes only.')}</label>
                                                 </div>
                                             </div>
                                         </div>
@@ -361,7 +363,7 @@
                                                    id="${curTorrentProvider.get_id()}_custom_url"
                                                    value="${curTorrentProvider.custom_url}"
                                                    class="form-control input-sm input350" autocapitalize="off"/>
-                                            <label for="${curTorrentProvider.get_id()}_custom_url">${_('The URL should include the protocol (and port if applicable).  Examples:  http://192.168.1.4/ or http://localhost:3000/')}</label>
+                                            <label for="${curTorrentProvider.get_id()}_custom_url">${_('the URL should include the protocol (and port if applicable).  Examples:  http://192.168.1.4/ or http://localhost:3000/')}</label>
                                         </div>
                                     </div>
                                 % endif
@@ -455,10 +457,24 @@
                                             <label class="component-title">${_('Cookies')}</label>
                                         </div>
                                         <div class="col-lg-9 col-md-8 col-sm-7 col-xs-12 component-desc">
-                                            <input type="text" name="${curTorrentProvider.get_id()}_cookies"
-                                                   id="${curTorrentProvider.get_id()}_cookies"
-                                                   value="${curTorrentProvider.cookies}" class="form-control input-sm input350"
-                                                   autocapitalize="off" autocomplete="no"/>
+                                            <div class="row">
+                                                <div class="col-md-12">
+                                                    <input type="text" name="${curTorrentProvider.get_id()}_cookies"
+                                                           id="${curTorrentProvider.get_id()}_cookies"
+                                                           value="${curTorrentProvider.cookies}"
+                                                           class="form-control input-sm input350"
+                                                           autocapitalize="off" autocomplete="no" />
+                                                </div>
+                                            </div>
+                                            <div class="row">
+                                                <div class="col-md-12">
+                                                    <label for="${curTorrentProvider.get_id()}_cookies">
+                                                        ${_('example: uid=1234;pass=567845439634987<br>' +
+                                                        'note: uid and pass are not your username/password.<br>' +
+                                                        'use DevTools or Firebug to get these values after logging in on your browser.')}
+                                                    </label>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 % endif
@@ -486,7 +502,7 @@
                                             <div class="row">
                                                 <div class="col-md-12">
                                                     <input type="number" min="-1" step="0.1" name="${curTorrentProvider.get_id()}_ratio"
-                                                           id="${curTorrentProvider.get_id()}_ratio" value="${curTorrentProvider.ratio}"
+                                                           id="${curTorrentProvider.get_id()}_ratio" value="${curTorrentProvider.ratio or ''}"
                                                            class="form-control input-sm input75"/>
                                                 </div>
                                             </div>
@@ -507,7 +523,7 @@
                                         <div class="col-lg-9 col-md-8 col-sm-7 col-xs-12 component-desc">
                                             <input type="number" min="0" step="1" name="${curTorrentProvider.get_id()}_minseed"
                                                    id="${curTorrentProvider.get_id()}_minseed"
-                                                   value="${curTorrentProvider.minseed}" class="form-control input-sm input75"/>
+                                                    value="${curTorrentProvider.minseed}" class="form-control input-sm input75"/>
                                         </div>
                                     </div>
                                 % endif
@@ -520,7 +536,7 @@
                                         <div class="col-lg-9 col-md-8 col-sm-7 col-xs-12 component-desc">
                                             <input type="number" min="0" step="1" name="${curTorrentProvider.get_id()}_minleech"
                                                    id="${curTorrentProvider.get_id()}_minleech"
-                                                   value="${curTorrentProvider.minleech}"
+                                                    value="${curTorrentProvider.minleech}"
                                                    class="form-control input-sm input75"/>
                                         </div>
                                     </div>
@@ -796,7 +812,7 @@
                                         </div>
                                         <div class="row">
                                             <div class="col-md-12">
-                                                <input class="btn newznab_cat_update" type="button" id="newznab_cat_update" value="${_('Update Categories')}"/>
+                                                <input class="btn newznab_cat_update" type="button" id="newznab_cat_update" value="${_('Update Categories')}" disabled="disabled" />
                                             </div>
                                         </div>
                                     </div>
